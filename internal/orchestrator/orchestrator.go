@@ -367,7 +367,7 @@ func (o *Orchestrator) execute(r *run) {
 		return
 	}
 
-	diff, stats, err := collectPatch(ctx, sb)
+	diff, stats, err := collectPatch(ctx, sb, mirror, commit)
 	if err != nil {
 		fail(ReasonHarnessError, err)
 		return
@@ -426,11 +426,31 @@ func (o *Orchestrator) finish(r *run, started time.Time, timing Timing, state St
 	}
 }
 
-// collectPatch stages everything the agent changed, including new files, and
-// returns it as a unified diff against the commit the run started from.
-func collectPatch(ctx context.Context, sb sandbox.Sandbox) (string, PatchStats, error) {
+// patchScript compares the working tree with the commit the run started from,
+// using the read-only mirror as the repository. It does not read the .git
+// directory in the workspace, the agent's git configuration, or its index:
+// those are all things the agent could have changed, by accident (one run's
+// repository was unusable by the time it finished) or on purpose (rewriting
+// HEAD would hide a change from a diff taken against it). The index and the
+// new objects go to a scratch directory, because the mirror cannot be written.
+const patchScript = `set -e
+scratch="$(mktemp -d)"
+export GIT_DIR="$1" GIT_WORK_TREE="$3" GIT_INDEX_FILE="$scratch/index"
+export GIT_OBJECT_DIRECTORY="$scratch/objects" GIT_ALTERNATE_OBJECT_DIRECTORIES="$1/objects"
+export GIT_CONFIG_GLOBAL=/dev/null
+mkdir -p "$scratch/objects"
+git read-tree "$2"
+git add -A .
+git diff --cached --no-color --no-ext-diff "$2" > "$scratch/diff"
+git diff --cached --numstat "$2" > "$scratch/numstat"
+cat "$scratch/$4"
+rm -rf "$scratch"`
+
+// collectPatch returns everything the agent changed, including new files, as
+// a unified diff against the commit the run started from.
+func collectPatch(ctx context.Context, sb sandbox.Sandbox, mirror, commit string) (string, PatchStats, error) {
 	diff, err := sb.Exec(ctx, sandbox.Command{
-		Argv:      sandbox.Shell(`git add -A . && git diff --cached --no-color --no-ext-diff HEAD`),
+		Argv:      []string{"bash", "-c", patchScript, "bash", mirror, commit, sandbox.WorkspaceDir, "diff"},
 		Dir:       sandbox.WorkspaceDir,
 		MaxOutput: 1 << 20,
 	})
@@ -444,7 +464,7 @@ func collectPatch(ctx context.Context, sb sandbox.Sandbox) (string, PatchStats, 
 		return "", PatchStats{}, errors.New("collecting patch: the change is larger than 1 MiB")
 	}
 	numstat, err := sb.Exec(ctx, sandbox.Command{
-		Argv: sandbox.Shell(`git diff --cached --numstat HEAD`),
+		Argv: []string{"bash", "-c", patchScript, "bash", mirror, commit, sandbox.WorkspaceDir, "numstat"},
 		Dir:  sandbox.WorkspaceDir,
 	})
 	if err != nil {

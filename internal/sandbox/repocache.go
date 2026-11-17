@@ -1,11 +1,11 @@
 package sandbox
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"path"
 	"regexp"
 	"strings"
@@ -161,28 +161,42 @@ fi`
 	return mirror, fetched, err
 }
 
-// Import turns a tar archive of a plain directory into a mirror named by key
-// and returns its path. It is how local task repositories enter the cache.
-func (c *RepoCache) Import(ctx context.Context, key string, archive io.Reader) (string, error) {
-	mirror := MirrorPath("local:" + key)
+// Import turns a tar archive of a plain directory into a mirror and returns
+// its path. It is how local task repositories enter the cache.
+//
+// A mirror is immutable and named by the hash of its content. Importing the
+// same content again, from this process or another one sharing the volume,
+// finds the mirror already there and changes nothing. That matters because
+// sandboxes clone with --shared and borrow the mirror's objects for as long
+// as they run: replacing a mirror in place would pull the objects out from
+// under every run that was using it. The commit is created with a fixed
+// author and date, so the same content also gives the same commit id.
+func (c *RepoCache) Import(ctx context.Context, key string, archive []byte) (string, error) {
+	sum := sha256.Sum256(archive)
+	mirror := MirrorPath("local:" + key + ":" + hex.EncodeToString(sum[:]))
 	err := c.single(ctx, mirror, func() error {
 		sb, err := c.fetcherSandbox(ctx)
 		if err != nil {
 			return err
 		}
 		script := `set -e
+if [ -d "$1" ]; then cat >/dev/null; exit 0; fi
 work="$(mktemp -d)"
 tar -x -C "$work"
+export GIT_AUTHOR_NAME=drydock GIT_AUTHOR_EMAIL=drydock@localhost GIT_AUTHOR_DATE=2000-01-01T00:00:00Z
+export GIT_COMMITTER_NAME=drydock GIT_COMMITTER_EMAIL=drydock@localhost GIT_COMMITTER_DATE=2000-01-01T00:00:00Z
 git -C "$work" init --quiet --initial-branch=main
 git -C "$work" add -A
 git -C "$work" commit --quiet -m "import"
-rm -rf "$1" "$1.partial"
-git clone --quiet --bare "$work" "$1.partial"
-mv "$1.partial" "$1"
-rm -rf "$work"`
+partial="$1.partial.$$"
+git clone --quiet --bare "$work" "$partial"
+rm -rf "$work"
+# If another process finished the same import first, keep theirs: the content is identical.
+if ! mv -T "$partial" "$1" 2>/dev/null; then rm -rf "$partial"; fi
+test -d "$1"`
 		result, err := sb.Exec(ctx, Command{
 			Argv:    []string{"bash", "-c", script, "bash", mirror},
-			Stdin:   archive,
+			Stdin:   bytes.NewReader(archive),
 			Timeout: 2 * time.Minute,
 		})
 		if err != nil {

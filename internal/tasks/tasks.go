@@ -9,7 +9,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -76,8 +75,10 @@ func Load(dir string) ([]Task, error) {
 	return out, nil
 }
 
-// Archive returns the task's repository as a tar stream.
-func (t Task) Archive() (io.Reader, error) {
+// Archive returns the task's repository as a tar archive. The bytes depend only
+// on the files' paths and contents (entries are in path order with no
+// timestamps), so the same repository always produces the same archive.
+func (t Task) Archive() ([]byte, error) {
 	var buffer bytes.Buffer
 	writer := tar.NewWriter(&buffer)
 	root := filepath.Join(t.dir, "repo")
@@ -114,7 +115,7 @@ func (t Task) Archive() (io.Reader, error) {
 	if err := writer.Close(); err != nil {
 		return nil, err
 	}
-	return &buffer, nil
+	return buffer.Bytes(), nil
 }
 
 // HiddenFiles returns the verification-only files, keyed by repository-relative path.

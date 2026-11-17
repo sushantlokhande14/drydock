@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -277,11 +278,17 @@ func TestReapRemovesEarlierInstancesOfItsOwnNamespaceOnly(t *testing.T) {
 	}
 }
 
-func archive(t *testing.T, files map[string]string) *bytes.Buffer {
+func archive(t *testing.T, files map[string]string) []byte {
 	t.Helper()
+	names := make([]string, 0, len(files))
+	for name := range files {
+		names = append(names, name)
+	}
+	sort.Strings(names)
 	var buffer bytes.Buffer
 	writer := tar.NewWriter(&buffer)
-	for name, content := range files {
+	for _, name := range names {
+		content := files[name]
 		if err := writer.WriteHeader(&tar.Header{Name: name, Mode: 0o644, Size: int64(len(content))}); err != nil {
 			t.Fatal(err)
 		}
@@ -292,7 +299,56 @@ func archive(t *testing.T, files map[string]string) *bytes.Buffer {
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
-	return &buffer
+	return buffer.Bytes()
+}
+
+func TestImportingTheSameContentAgainLeavesRunningClonesIntact(t *testing.T) {
+	driver := newDriver(t)
+	files := map[string]string{"a.py": "x = 1\n", "b.py": "y = 2\n"}
+	first := sandbox.NewRepoCache(driver, testImage(), testVolume, time.Hour)
+	t.Cleanup(func() { first.Close(context.Background()) })
+	mirror, err := first.Import(context.Background(), "immutable-"+testNamespace, archive(t, files))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A run is using the mirror.
+	sb := newSandbox(t, driver, sandbox.PurposeAgent)
+	checkout, err := sandbox.Checkout(context.Background(), sb, mirror, "")
+	if err != nil || !checkout.OK() {
+		t.Fatalf("checkout: %+v %v", checkout, err)
+	}
+	commit := strings.TrimSpace(checkout.Stdout)
+
+	// A second orchestrator on the same volume imports the same repository.
+	second := sandbox.NewRepoCache(newDriver(t), testImage(), testVolume, time.Hour)
+	t.Cleanup(func() { second.Close(context.Background()) })
+	again, err := second.Import(context.Background(), "immutable-"+testNamespace, archive(t, files))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if again != mirror {
+		t.Fatalf("the same content was imported to a different mirror: %s then %s", mirror, again)
+	}
+	// The running clone borrows the mirror's objects. They must still be there.
+	if result := sh(t, sb, "cd "+sandbox.WorkspaceDir+" && git cat-file -t HEAD && git status --porcelain | wc -l"); strings.TrimSpace(result.Stdout) != "commit\n0" {
+		t.Fatalf("the clone was damaged by a second import: %+v", result)
+	}
+	// Same content, same commit, whoever imports it.
+	other := newSandbox(t, driver, sandbox.PurposeAgent)
+	if result, err := sandbox.Checkout(context.Background(), other, again, ""); err != nil || strings.TrimSpace(result.Stdout) != commit {
+		t.Fatalf("commit id is not stable across imports: %q vs %q (%v)", strings.TrimSpace(result.Stdout), commit, err)
+	}
+
+	// Different content is a different mirror, and the first one is untouched.
+	changed, err := first.Import(context.Background(), "immutable-"+testNamespace, archive(t, map[string]string{"a.py": "x = 2\n"}))
+	if err != nil || changed == mirror {
+		t.Fatalf("changed content must get its own mirror (got %s, err %v)", changed, err)
+	}
+	if result := sh(t, sb, "cd "+sandbox.WorkspaceDir+" && git cat-file -t HEAD"); strings.TrimSpace(result.Stdout) != "commit" {
+		t.Fatalf("importing different content damaged an existing clone: %+v", result)
+	}
 }
 
 func TestARepositoryIsImportedOnceAndCheckedOutWithoutCopyingObjects(t *testing.T) {

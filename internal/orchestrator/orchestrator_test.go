@@ -55,12 +55,12 @@ func (h *harness) handle(f *sandboxtest.Fake, cmd sandbox.Command, stdin string)
 		return sandbox.Result{Stdout: " M calc.py\n"}, true
 	case strings.Contains(joined, "git ls-files | head"):
 		return sandbox.Result{Stdout: "calc.py\ntests/test_calc.py\n"}, true
-	case strings.Contains(joined, "git diff --cached --no-color"):
+	case strings.Contains(joined, "git read-tree") && strings.HasSuffix(joined, " diff"):
 		if content, _ := f.File(calcPath); content == original {
 			return sandbox.Result{}, true
 		}
 		return sandbox.Result{Stdout: fakeDiff}, true
-	case strings.Contains(joined, "--numstat"):
+	case strings.Contains(joined, "git read-tree") && strings.HasSuffix(joined, " numstat"):
 		return sandbox.Result{Stdout: "1\t1\tcalc.py\n"}, true
 	case len(cmd.Argv) >= 2 && cmd.Argv[0] == "git" && cmd.Argv[1] == "apply":
 		h.applied = append(h.applied, stdin)
