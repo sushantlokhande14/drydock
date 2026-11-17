@@ -2,3 +2,5 @@ bin/
 runs/
 node_modules/
 web/dist/
+.claude/
+bench/*.log
