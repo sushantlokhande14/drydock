@@ -1,0 +1,72 @@
+{
+  "attempts": 8,
+  "measuredAt": "2026-11-17T22:55:37.314947506Z",
+  "model": "ollama:qwen2.5:7b",
+  "resolved": 1,
+  "rows": [
+    {
+      "task": "amounts-parentheses",
+      "state": "failed",
+      "reason": "verification_failed",
+      "steps": 18,
+      "toolCalls": 15,
+      "seconds": 92.388
+    },
+    {
+      "task": "intervals-unsorted-input",
+      "state": "succeeded",
+      "reason": "patch_verified",
+      "steps": 13,
+      "toolCalls": 10,
+      "seconds": 95.14
+    },
+    {
+      "task": "lru-read-recency",
+      "state": "failed",
+      "reason": "verification_failed",
+      "steps": 25,
+      "toolCalls": 23,
+      "seconds": 156.151
+    },
+    {
+      "task": "pagination-last-page",
+      "state": "failed",
+      "reason": "model_stopped_calling_tools",
+      "steps": 6,
+      "toolCalls": 49,
+      "seconds": 171.875
+    },
+    {
+      "task": "ratelimit-lost-refill",
+      "state": "failed",
+      "reason": "verification_failed",
+      "steps": 25,
+      "toolCalls": 25,
+      "seconds": 466.347
+    },
+    {
+      "task": "slug-stray-hyphens",
+      "state": "failed",
+      "reason": "verification_failed",
+      "steps": 18,
+      "toolCalls": 15,
+      "seconds": 90.129
+    },
+    {
+      "task": "unique-ignores-key",
+      "state": "failed",
+      "reason": "verification_failed",
+      "steps": 3,
+      "toolCalls": 7,
+      "seconds": 15.821
+    },
+    {
+      "task": "versions-string-compare",
+      "state": "failed",
+      "reason": "verification_failed",
+      "steps": 12,
+      "toolCalls": 9,
+      "seconds": 86.278
+    }
+  ]
+}

@@ -68,9 +68,10 @@ Eight small Python repositories with a seeded defect each. A task is fair by con
 | Run | Model | Resolved | Notes |
 |---|---|---:|---|
 | First | qwen2.5:7b via Ollama | 0 of 8 | Five model failures and three harness failures. The harness failures are what the next row fixes. |
-| Second | qwen2.5:7b via Ollama | 2 of 8 | One of the six failures was the harness again: a second server sharing the cache replaced a mirror under a running agent. Fixed since, by making imports immutable. |
+| Second | qwen2.5:7b via Ollama | 2 of 8 | One of the six failures was the harness again: a second server sharing the cache replaced a repository copy under a running agent. Fixed since, by making cached repositories immutable. |
+| Third, final code | qwen2.5:7b via Ollama | 1 of 8 | Every run ended on the agent's own work: seven patches failed the hidden tests or never came, and no run hit a harness error. |
 
-The second row predates the last two fixes and should be rerun. Scripted runs, which replay a recorded solution through the real sandbox and verification path, pass 24 of 24.
+Across three runs the model resolved 0, 2 and 1 of 8. It solved the cache task in the second run and not the third: even at temperature 0, tool output such as test timings differs between runs and the conversation diverges from there. With eight tasks, these numbers cannot tell a model that solves 12% of such tasks from one that solves 25%; what they do show is that every failure is now the agent's. Scripted runs, which replay a recorded solution through the real sandbox and verification path, pass 24 of 24.
 
 ## What the evaluations changed
 
