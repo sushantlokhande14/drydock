@@ -1,0 +1,63 @@
+{
+  "title": "The rate limiter never refills when it is polled more than once a second",
+  "issue": "A bucket created with `TokenBucket(rate=2, capacity=2)` should allow two operations per second on average. After the initial burst, a client that calls `allow()` every 250 ms is refused forever: no token is ever added. A client that waits two full seconds between calls does get tokens back, so refill works only for long gaps.",
+  "testCommand": "python -m pytest -q -p no:cacheprovider tests",
+  "verifyCommand": "python -m pytest -q -p no:cacheprovider tests hidden_tests",
+  "script": {
+    "steps": [
+      {
+        "say": "I'll start with the module the issue is about.",
+        "calls": [
+          {
+            "tool": "read_file",
+            "args": {
+              "path": "ratelimit.py"
+            }
+          }
+        ]
+      },
+      {
+        "say": "Before changing anything I want to see what the existing tests cover.",
+        "calls": [
+          {
+            "tool": "run_tests",
+            "args": {}
+          }
+        ]
+      },
+      {
+        "say": "_refill truncates the elapsed time to whole seconds and then records the current time, so fractions of a second are discarded on every call.",
+        "calls": [
+          {
+            "tool": "replace_in_file",
+            "args": {
+              "path": "ratelimit.py",
+              "old_text": "        elapsed = int(now - self._updated)",
+              "new_text": "        elapsed = now - self._updated"
+            }
+          }
+        ]
+      },
+      {
+        "say": "Running the tests again to confirm nothing that worked before is broken.",
+        "calls": [
+          {
+            "tool": "run_tests",
+            "args": {}
+          }
+        ]
+      },
+      {
+        "say": "",
+        "calls": [
+          {
+            "tool": "submit",
+            "args": {
+              "summary": "The elapsed time is no longer truncated to whole seconds, so partial seconds accumulate into tokens."
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "title": "Slugs start or end with a hyphen",
+  "issue": "`slugify(\"  Hello, World!  \")` returns `-hello-world-`; it should be `hello-world`. Truncation has the same problem: `slugify(\"alpha beta gamma\", max_length=11)` returns `alpha-beta-`. A slug must never start or end with a hyphen, and a title with no letters or digits should give an empty slug.",
+  "testCommand": "python -m pytest -q -p no:cacheprovider tests",
+  "verifyCommand": "python -m pytest -q -p no:cacheprovider tests hidden_tests",
+  "script": {
+    "steps": [
+      {
+        "say": "I'll start with the module the issue is about.",
+        "calls": [
+          {
+            "tool": "read_file",
+            "args": {
+              "path": "slugs.py"
+            }
+          }
+        ]
+      },
+      {
+        "say": "Before changing anything I want to see what the existing tests cover.",
+        "calls": [
+          {
+            "tool": "run_tests",
+            "args": {}
+          }
+        ]
+      },
+      {
+        "say": "Separators at either end become hyphens and are never removed, and cutting to max_length can leave one at the end.",
+        "calls": [
+          {
+            "tool": "replace_in_file",
+            "args": {
+              "path": "slugs.py",
+              "old_text": "    slug = _SEPARATORS.sub(\"-\", ascii_only.lower())",
+              "new_text": "    slug = _SEPARATORS.sub(\"-\", ascii_only.lower()).strip(\"-\")"
+            }
+          },
+          {
+            "tool": "replace_in_file",
+            "args": {
+              "path": "slugs.py",
+              "old_text": "    return slug[:max_length]",
+              "new_text": "    return slug[:max_length].rstrip(\"-\")"
+            }
+          }
+        ]
+      },
+      {
+        "say": "Running the tests again to confirm nothing that worked before is broken.",
+        "calls": [
+          {
+            "tool": "run_tests",
+            "args": {}
+          }
+        ]
+      },
+      {
+        "say": "",
+        "calls": [
+          {
+            "tool": "submit",
+            "args": {
+              "summary": "Hyphens are now stripped from both ends of the slug, and again from the end after truncation."
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

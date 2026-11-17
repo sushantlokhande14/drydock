@@ -1,0 +1,63 @@
+{
+  "title": "unique() ignores its key argument",
+  "issue": "`unique([\"a\", \"A\", \"b\"], key=str.lower)` returns all three items; it should return `[\"a\", \"b\"]`. The key is also the only way to de-duplicate unhashable items: `unique([{\"id\": 1}, {\"id\": 1}], key=lambda d: d[\"id\"])` currently raises `TypeError: unhashable type: 'dict'`.",
+  "testCommand": "python -m pytest -q -p no:cacheprovider tests",
+  "verifyCommand": "python -m pytest -q -p no:cacheprovider tests hidden_tests",
+  "script": {
+    "steps": [
+      {
+        "say": "I'll start with the module the issue is about.",
+        "calls": [
+          {
+            "tool": "read_file",
+            "args": {
+              "path": "unique.py"
+            }
+          }
+        ]
+      },
+      {
+        "say": "Before changing anything I want to see what the existing tests cover.",
+        "calls": [
+          {
+            "tool": "run_tests",
+            "args": {}
+          }
+        ]
+      },
+      {
+        "say": "The function accepts key but never calls it: the item itself is always used as the marker.",
+        "calls": [
+          {
+            "tool": "replace_in_file",
+            "args": {
+              "path": "unique.py",
+              "old_text": "        marker = item",
+              "new_text": "        marker = key(item) if key is not None else item"
+            }
+          }
+        ]
+      },
+      {
+        "say": "Running the tests again to confirm nothing that worked before is broken.",
+        "calls": [
+          {
+            "tool": "run_tests",
+            "args": {}
+          }
+        ]
+      },
+      {
+        "say": "",
+        "calls": [
+          {
+            "tool": "submit",
+            "args": {
+              "summary": "The marker is now key(item) when a key is given, and the item itself otherwise."
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "title": "merge_intervals gives wrong results for unsorted input",
+  "issue": "`merge_intervals([(5, 7), (1, 3), (2, 4)])` returns `[(5, 7), (1, 4)]`; the expected result is `[(1, 4), (5, 7)]`. Worse, `merge_intervals([(1, 5), (8, 9), (2, 3)])` returns three intervals although (2, 3) lies inside (1, 5). Callers pass intervals in whatever order they were recorded, so the function must not assume they are sorted.",
+  "testCommand": "python -m pytest -q -p no:cacheprovider tests",
+  "verifyCommand": "python -m pytest -q -p no:cacheprovider tests hidden_tests",
+  "script": {
+    "steps": [
+      {
+        "say": "I'll start with the module the issue is about.",
+        "calls": [
+          {
+            "tool": "read_file",
+            "args": {
+              "path": "intervals.py"
+            }
+          }
+        ]
+      },
+      {
+        "say": "Before changing anything I want to see what the existing tests cover.",
+        "calls": [
+          {
+            "tool": "run_tests",
+            "args": {}
+          }
+        ]
+      },
+      {
+        "say": "The loop compares each interval only with the last merged one, which is correct only if the input is sorted by start.",
+        "calls": [
+          {
+            "tool": "replace_in_file",
+            "args": {
+              "path": "intervals.py",
+              "old_text": "    for start, end in intervals:",
+              "new_text": "    for start, end in sorted(intervals):"
+            }
+          }
+        ]
+      },
+      {
+        "say": "Running the tests again to confirm nothing that worked before is broken.",
+        "calls": [
+          {
+            "tool": "run_tests",
+            "args": {}
+          }
+        ]
+      },
+      {
+        "say": "",
+        "calls": [
+          {
+            "tool": "submit",
+            "args": {
+              "summary": "The intervals are now sorted by start before merging, so input order no longer matters."
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

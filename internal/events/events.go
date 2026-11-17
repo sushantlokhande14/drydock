@@ -320,3 +320,10 @@ func (s *Store) Load() (int, error) {
 	}
 	return loaded, nil
 }
+
+// CloseAll closes every run's log. It is called when the process shuts down.
+func (s *Store) CloseAll() {
+	for _, run := range s.Runs() {
+		s.Close(run)
+	}
+}

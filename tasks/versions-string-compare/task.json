@@ -1,0 +1,63 @@
+{
+  "title": "Version 1.10.0 is treated as older than 1.9.0",
+  "issue": "`compare_versions(\"1.10.0\", \"1.9.0\")` returns -1 and `latest([\"1.9.0\", \"1.10.0\", \"1.2.0\"])` returns `1.9.0`. Version parts must be compared as numbers, not as text.",
+  "testCommand": "python -m pytest -q -p no:cacheprovider tests",
+  "verifyCommand": "python -m pytest -q -p no:cacheprovider tests hidden_tests",
+  "script": {
+    "steps": [
+      {
+        "say": "I'll start with the module the issue is about.",
+        "calls": [
+          {
+            "tool": "read_file",
+            "args": {
+              "path": "versions.py"
+            }
+          }
+        ]
+      },
+      {
+        "say": "Before changing anything I want to see what the existing tests cover.",
+        "calls": [
+          {
+            "tool": "run_tests",
+            "args": {}
+          }
+        ]
+      },
+      {
+        "say": "parse_version returns the parts as strings, so the comparison is lexicographic and \"10\" sorts before \"9\".",
+        "calls": [
+          {
+            "tool": "replace_in_file",
+            "args": {
+              "path": "versions.py",
+              "old_text": "    return parts",
+              "new_text": "    return [int(part) for part in parts]"
+            }
+          }
+        ]
+      },
+      {
+        "say": "Running the tests again to confirm nothing that worked before is broken.",
+        "calls": [
+          {
+            "tool": "run_tests",
+            "args": {}
+          }
+        ]
+      },
+      {
+        "say": "",
+        "calls": [
+          {
+            "tool": "submit",
+            "args": {
+              "summary": "parse_version now returns integers, so versions are compared numerically."
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

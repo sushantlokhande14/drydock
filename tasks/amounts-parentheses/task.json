@@ -1,0 +1,71 @@
+{
+  "title": "Amounts in parentheses are rejected",
+  "issue": "Bank exports write negative amounts in parentheses. `parse_amount(\"(12.00)\")` raises `ValueError: not an amount`; it should return `Decimal(\"-12.00\")`. Thousands separators inside parentheses must work too: `(1,000)` is -1000. Empty parentheses are still not an amount.",
+  "testCommand": "python -m pytest -q -p no:cacheprovider tests",
+  "verifyCommand": "python -m pytest -q -p no:cacheprovider tests hidden_tests",
+  "script": {
+    "steps": [
+      {
+        "say": "I'll start with the module the issue is about.",
+        "calls": [
+          {
+            "tool": "read_file",
+            "args": {
+              "path": "amounts.py"
+            }
+          }
+        ]
+      },
+      {
+        "say": "Before changing anything I want to see what the existing tests cover.",
+        "calls": [
+          {
+            "tool": "run_tests",
+            "args": {}
+          }
+        ]
+      },
+      {
+        "say": "The docstring promises parentheses mean negative, but the code only looks for a leading minus and passes the parentheses to Decimal.",
+        "calls": [
+          {
+            "tool": "replace_in_file",
+            "args": {
+              "path": "amounts.py",
+              "old_text": "    negative = cleaned.startswith(\"-\")",
+              "new_text": "    negative = cleaned.startswith(\"-\") or (cleaned.startswith(\"(\") and cleaned.endswith(\")\"))"
+            }
+          },
+          {
+            "tool": "replace_in_file",
+            "args": {
+              "path": "amounts.py",
+              "old_text": "    cleaned = cleaned.lstrip(\"-\").replace(\",\", \"\")",
+              "new_text": "    cleaned = cleaned.strip(\"()\").lstrip(\"-\").replace(\",\", \"\")"
+            }
+          }
+        ]
+      },
+      {
+        "say": "Running the tests again to confirm nothing that worked before is broken.",
+        "calls": [
+          {
+            "tool": "run_tests",
+            "args": {}
+          }
+        ]
+      },
+      {
+        "say": "",
+        "calls": [
+          {
+            "tool": "submit",
+            "args": {
+              "summary": "A value wrapped in parentheses is now treated as negative and the parentheses are removed before parsing."
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

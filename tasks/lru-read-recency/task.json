@@ -1,0 +1,63 @@
+{
+  "title": "Reading an entry does not keep it from being evicted",
+  "issue": "The cache is documented as least-recently-used, but only writes count as use. With capacity 2: put a, put b, get a, put c. The entry evicted is a, even though it was just read; b should be evicted instead.",
+  "testCommand": "python -m pytest -q -p no:cacheprovider tests",
+  "verifyCommand": "python -m pytest -q -p no:cacheprovider tests hidden_tests",
+  "script": {
+    "steps": [
+      {
+        "say": "I'll start with the module the issue is about.",
+        "calls": [
+          {
+            "tool": "read_file",
+            "args": {
+              "path": "lru.py"
+            }
+          }
+        ]
+      },
+      {
+        "say": "Before changing anything I want to see what the existing tests cover.",
+        "calls": [
+          {
+            "tool": "run_tests",
+            "args": {}
+          }
+        ]
+      },
+      {
+        "say": "get returns the value without marking the entry as recently used; only put moves an entry to the end.",
+        "calls": [
+          {
+            "tool": "replace_in_file",
+            "args": {
+              "path": "lru.py",
+              "old_text": "        return self._entries[key]",
+              "new_text": "        self._entries.move_to_end(key)\n        return self._entries[key]"
+            }
+          }
+        ]
+      },
+      {
+        "say": "Running the tests again to confirm nothing that worked before is broken.",
+        "calls": [
+          {
+            "tool": "run_tests",
+            "args": {}
+          }
+        ]
+      },
+      {
+        "say": "",
+        "calls": [
+          {
+            "tool": "submit",
+            "args": {
+              "summary": "get now moves the entry to the most-recently-used position before returning it."
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
