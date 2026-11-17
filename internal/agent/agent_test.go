@@ -17,9 +17,19 @@ const source = "def total(items):\n    return len(items) // 10\n\n\ndef other():
 
 func repo() *sandboxtest.Fake {
 	fake := sandboxtest.NewFake("s1", map[string]string{sandbox.WorkspaceDir + "/calc.py": source})
-	fake.Handler = func(_ *sandboxtest.Fake, cmd sandbox.Command, _ string) (sandbox.Result, bool) {
+	fake.Handler = func(f *sandboxtest.Fake, cmd sandbox.Command, _ string) (sandbox.Result, bool) {
 		joined := strings.Join(cmd.Argv, " ")
 		switch {
+		case joined == "git status --porcelain":
+			if content, _ := f.File(sandbox.WorkspaceDir + "/calc.py"); content != source {
+				return sandbox.Result{Stdout: " M calc.py\n"}, true
+			}
+			return sandbox.Result{}, true
+		case strings.Contains(joined, "git ls-files"):
+			if strings.HasSuffix(joined, "/nowhere") {
+				return sandbox.Result{}, true
+			}
+			return sandbox.Result{Stdout: "calc.py\n"}, true
 		case strings.Contains(joined, "pytest"):
 			return sandbox.Result{Stdout: "3 passed in 0.01s"}, true
 		case strings.Contains(joined, "exit 3"):
@@ -249,11 +259,47 @@ func TestLongOutputKeepsItsHeadAndTail(t *testing.T) {
 	}
 }
 
-func TestSubmitEndsTheRunAndToolSpecsAreValidSchemas(t *testing.T) {
-	result := runTool(t, repo(), "submit", map[string]any{"summary": "done"})
+func TestSubmitIsRefusedWhileNothingHasChanged(t *testing.T) {
+	tools := NewToolbox(repo(), "", 0, 0)
+	submit := func() toolResult {
+		return tools.Call(context.Background(), model.ToolCall{Name: "submit", Arguments: json.RawMessage(`{"summary":"fixed it"}`)}, nil)
+	}
+
+	// The model says it fixed the bug. It has not touched a file.
+	for attempt := 1; attempt <= 2; attempt++ {
+		refused := submit()
+		if refused.Submitted || !refused.IsError || !strings.Contains(refused.Output, "no file in the repository has changed") {
+			t.Fatalf("attempt %d on an unchanged repository: %+v", attempt, refused)
+		}
+	}
+	// A model that insists is let through: the run then fails on its empty diff, on the record.
+	if insisted := submit(); !insisted.Submitted {
+		t.Fatalf("the third submit should be accepted: %+v", insisted)
+	}
+}
+
+func TestSubmitIsAcceptedOnceAFileHasChanged(t *testing.T) {
+	fake := repo()
+	fake.SetFile(sandbox.WorkspaceDir+"/calc.py", source+"# changed\n")
+
+	result := runTool(t, fake, "submit", map[string]any{"summary": "done"})
+
 	if !result.Submitted || result.Output != "done" {
 		t.Fatalf("submit: %+v", result)
 	}
+}
+
+func TestListFilesAcceptsAFileAndReportsAnEmptyPath(t *testing.T) {
+	fake := repo()
+	if listed := runTool(t, fake, "list_files", map[string]any{"path": "calc.py"}); listed.IsError || !strings.Contains(listed.Output, "calc.py") {
+		t.Fatalf("listing a file: %+v", listed)
+	}
+	if missing := runTool(t, fake, "list_files", map[string]any{"path": "nowhere"}); !missing.IsError || !strings.Contains(missing.Output, "no path") {
+		t.Fatalf("listing a path with nothing in it: %+v", missing)
+	}
+}
+
+func TestToolSpecsAreValidSchemas(t *testing.T) {
 	for _, spec := range NewToolbox(repo(), "", 0, 0).Specs() {
 		var schema map[string]any
 		if err := json.Unmarshal(spec.Parameters, &schema); err != nil || schema["type"] != "object" {

@@ -35,7 +35,11 @@ type Toolbox struct {
 	MaxOutput      int
 	tools          map[string]tool
 	order          []string
+	// submitRefusals counts how often submit was turned away for an unchanged repository.
+	submitRefusals int
 }
+
+const maxSubmitRefusals = 2
 
 // NewToolbox returns the standard tools bound to one sandbox.
 func NewToolbox(sb sandbox.Sandbox, testCommand string, commandTimeout time.Duration, maxOutput int) *Toolbox {
@@ -118,14 +122,18 @@ func standardTools() []tool {
 				if bad != nil {
 					return *bad
 				}
-				dir, err := sandbox.RepoPath(args.Path)
+				where, err := sandbox.RepoPath(args.Path)
 				if err != nil {
 					return toolResult{IsError: true, Output: err.Error()}
 				}
+				// A pathspec, not a cd: it works for a directory and for a single file alike.
 				result, err := t.Sandbox.Exec(ctx, sandbox.Command{
-					Argv: []string{"bash", "-c", `cd "$1" && git ls-files --cached --others --exclude-standard | head -n 400`, "bash", dir},
+					Argv: []string{"bash", "-c", `git ls-files --cached --others --exclude-standard -- "$1" | head -n 400`, "bash", where},
 					Dir:  sandbox.WorkspaceDir,
 				})
+				if err == nil && result.OK() && strings.TrimSpace(result.Stdout) == "" {
+					return toolResult{IsError: true, Output: "Nothing at " + strconv.Quote(args.Path) + ". Call list_files with no path to see the whole repository."}
+				}
 				return fromExec(result, err, t.MaxOutput, false)
 			},
 		},
@@ -318,12 +326,23 @@ func standardTools() []tool {
 				Description: "Finish the task. Call this once the tests pass, with a short summary of what you changed and why.",
 				Parameters:  schema(`"summary":{"type":"string"}`, "summary"),
 			},
-			run: func(_ context.Context, _ *Toolbox, raw json.RawMessage, _ func(string, []byte)) toolResult {
+			run: func(ctx context.Context, t *Toolbox, raw json.RawMessage, _ func(string, []byte)) toolResult {
 				args, bad := decode[struct {
 					Summary string `json:"summary"`
 				}](raw)
 				if bad != nil {
 					return *bad
+				}
+				// A model can describe a fix, believe it has made it, and submit an untouched
+				// repository. Say so, twice at most; after that the submission stands and the
+				// run is judged on its empty diff like any other.
+				if t.submitRefusals < maxSubmitRefusals {
+					status, err := t.Sandbox.Exec(ctx, sandbox.Command{Argv: []string{"git", "status", "--porcelain"}, Dir: sandbox.WorkspaceDir})
+					if err == nil && status.OK() && strings.TrimSpace(status.Stdout) == "" {
+						t.submitRefusals++
+						return toolResult{IsError: true, Output: "Not submitted: no file in the repository has changed. Describing a change does not make it. " +
+							"Edit the code with replace_in_file or write_file, run the tests, then call submit."}
+					}
 				}
 				return toolResult{Output: args.Summary, Submitted: true}
 			},

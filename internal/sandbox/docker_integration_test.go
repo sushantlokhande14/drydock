@@ -13,6 +13,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -48,8 +49,11 @@ func newDriver(t *testing.T) *sandbox.DockerDriver {
 	if present, err := client.ImageExists(ctx, testImage()); err != nil || !present {
 		t.Fatalf("sandbox image %s is missing (err %v); build it with images/build.sh", testImage(), err)
 	}
-	return sandbox.NewDockerDriver(client)
+	// A namespace of its own: these tests reap, and must never reap a real orchestrator's sandboxes.
+	return sandbox.NewDockerDriver(client, testNamespace)
 }
+
+var testNamespace = fmt.Sprintf("test-%d", time.Now().UnixNano())
 
 func newSandbox(t *testing.T, driver sandbox.Driver, purpose sandbox.Purpose) sandbox.Sandbox {
 	t.Helper()
@@ -241,25 +245,35 @@ func TestFilesRoundTripWhateverTheyContain(t *testing.T) {
 	}
 }
 
-func TestReapRemovesAnotherInstancesSandboxesOnly(t *testing.T) {
-	crashed := newDriver(t)
+func TestReapRemovesEarlierInstancesOfItsOwnNamespaceOnly(t *testing.T) {
+	client, err := engine.New("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	namespace := fmt.Sprintf("reap-%d", time.Now().UnixNano())
+	crashed := sandbox.NewDockerDriver(client, namespace)
 	orphan := newSandbox(t, crashed, sandbox.PurposeAgent)
-	restarted := newDriver(t)
+	restarted := sandbox.NewDockerDriver(client, namespace)
 	own := newSandbox(t, restarted, sandbox.PurposeAgent)
+	neighbour := newSandbox(t, sandbox.NewDockerDriver(client, namespace+"-other"), sandbox.PurposeAgent)
 
 	removed, err := restarted.Reap(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if removed < 1 {
-		t.Fatalf("reaped %d sandboxes, want at least the orphan", removed)
+	if removed != 1 {
+		t.Fatalf("reaped %d sandboxes, want exactly the orphan", removed)
 	}
-	if _, err := orphan.Exec(context.Background(), sandbox.Command{Argv: []string{"true"}}); err == nil {
-		t.Fatal("the orphaned sandbox is still running")
+	if _, err := orphan.Exec(context.Background(), sandbox.Command{Argv: []string{"true"}}); !errors.Is(err, sandbox.ErrGone) {
+		t.Fatalf("using the reaped sandbox should report that it is gone, got %v", err)
 	}
 	if got := strings.TrimSpace(sh(t, own, "echo mine").Stdout); got != "mine" {
 		t.Fatalf("the reaper removed a sandbox of its own instance: %q", got)
+	}
+	// Another orchestrator on the same daemon is none of this one's business.
+	if got := strings.TrimSpace(sh(t, neighbour, "echo theirs").Stdout); got != "theirs" {
+		t.Fatalf("the reaper removed a sandbox from another namespace: %q", got)
 	}
 }
 

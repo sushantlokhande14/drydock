@@ -71,6 +71,9 @@ func usage() {
 // options are the settings every command shares.
 type options struct {
 	dockerHost    string
+	namespace     string
+	ollamaURL     string
+	contextTokens int
 	image         string
 	cacheVolume   string
 	dataDir       string
@@ -85,6 +88,9 @@ type options struct {
 
 func (o *options) register(flags *flag.FlagSet) {
 	flags.StringVar(&o.dockerHost, "docker-host", "", "Docker daemon address (default: $DOCKER_HOST, then the local socket)")
+	flags.StringVar(&o.namespace, "namespace", "default", "name this orchestrator's sandboxes are grouped under; one live orchestrator per namespace")
+	flags.StringVar(&o.ollamaURL, "ollama-url", "http://localhost:11434", `base URL of an Ollama server, for "ollama:<name>" models`)
+	flags.IntVar(&o.contextTokens, "context-tokens", 8192, "context window requested from Ollama")
 	flags.StringVar(&o.image, "image", "drydock-sandbox:python", "sandbox image; build it with images/build.sh")
 	flags.StringVar(&o.cacheVolume, "cache-volume", "drydock-cache", "Docker volume that holds repository mirrors")
 	flags.StringVar(&o.dataDir, "data", "", "directory for run logs; empty keeps them in memory")
@@ -122,7 +128,7 @@ func (o *options) boot(ctx context.Context) (*system, error) {
 		return nil, fmt.Errorf("sandbox image %q not found; build it with images/build.sh", o.image)
 	}
 
-	driver := sandbox.NewDockerDriver(client)
+	driver := sandbox.NewDockerDriver(client, o.namespace)
 	if reaped, err := driver.Reap(ctx); err != nil {
 		return nil, fmt.Errorf("reaping orphaned sandboxes: %w", err)
 	} else if reaped > 0 {
@@ -195,6 +201,12 @@ func (o *options) newModel(spec orchestrator.TaskSpec) (model.Backend, error) {
 			Model:   strings.TrimPrefix(spec.Model, "openai:"),
 			APIKey:  os.Getenv("DRYDOCK_API_KEY"),
 		}, nil
+	case strings.HasPrefix(spec.Model, "ollama:"):
+		return &model.Ollama{
+			BaseURL:       o.ollamaURL,
+			Model:         strings.TrimPrefix(spec.Model, "ollama:"),
+			ContextTokens: o.contextTokens,
+		}, nil
 	}
-	return nil, fmt.Errorf(`unknown model %q (use "scripted" or "openai:<name>")`, spec.Model)
+	return nil, fmt.Errorf(`unknown model %q (use "scripted", "ollama:<name>" or "openai:<name>")`, spec.Model)
 }

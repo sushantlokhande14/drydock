@@ -129,3 +129,63 @@ func TestOpenAISurfacesServerErrors(t *testing.T) {
 		t.Fatal("a response with no choices should be an error")
 	}
 }
+
+func TestOllamaRequestsAContextWindowAndBoundsTheAnswer(t *testing.T) {
+	var received map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/chat" {
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &received)
+		_, _ = w.Write([]byte(`{"message":{"role":"assistant","content":"reading",
+			"tool_calls":[{"function":{"name":"read_file","arguments":{"path":"a.py"}}},
+			              {"function":{"name":"run_tests","arguments":{}}}]},
+			"prompt_eval_count":900,"eval_count":40,"done":true}`))
+	}))
+	defer server.Close()
+
+	backend := &Ollama{BaseURL: server.URL + "/", Model: "qwen2.5:7b", ContextTokens: 16384}
+	response, err := backend.Complete(context.Background(), Request{
+		Messages: []Message{
+			{Role: "user", Content: "fix it"},
+			{Role: "assistant", ToolCalls: []ToolCall{{ID: "c1", Name: "list_files", Arguments: json.RawMessage(`{"path":"src"}`)}}},
+			{Role: "tool", ToolCallID: "c1", Content: "a.py"},
+		},
+		Tools: []Tool{{Name: "read_file", Description: "Read a file", Parameters: json.RawMessage(`{"type":"object"}`)}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	options := received["options"].(map[string]any)
+	if options["num_ctx"] != float64(16384) || options["num_predict"] != float64(1024) || received["stream"] != false {
+		t.Fatalf("request options: %v", received)
+	}
+	messages := received["messages"].([]any)
+	call := messages[1].(map[string]any)["tool_calls"].([]any)[0].(map[string]any)["function"].(map[string]any)
+	// The native API takes arguments as an object, unlike the OpenAI format.
+	if arguments, ok := call["arguments"].(map[string]any); !ok || arguments["path"] != "src" {
+		t.Fatalf("history arguments: %v", call)
+	}
+	if messages[2].(map[string]any)["tool_name"] != "list_files" {
+		t.Fatalf("a tool result should name the tool it answers: %v", messages[2])
+	}
+
+	if response.Content != "reading" || response.Usage.PromptTokens != 900 || response.Usage.CompletionTokens != 40 {
+		t.Fatalf("response: %+v", response)
+	}
+	if len(response.ToolCalls) != 2 || string(response.ToolCalls[0].Arguments) != `{"path":"a.py"}` || response.ToolCalls[0].ID == response.ToolCalls[1].ID {
+		t.Fatalf("tool calls: %+v", response.ToolCalls)
+	}
+}
+
+func TestOllamaSurfacesErrors(t *testing.T) {
+	missing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, `{"error":"model 'nope' not found"}`, http.StatusNotFound)
+	}))
+	defer missing.Close()
+	if _, err := (&Ollama{BaseURL: missing.URL, Model: "nope"}).Complete(context.Background(), Request{}); err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("expected the server's error, got %v", err)
+	}
+}

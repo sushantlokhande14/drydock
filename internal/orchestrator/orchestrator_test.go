@@ -48,6 +48,11 @@ func (h *harness) handle(f *sandboxtest.Fake, cmd sandbox.Command, stdin string)
 			return sandbox.Result{ExitCode: 128, Stderr: "fatal: not a git repository"}, true
 		}
 		return sandbox.Result{Stdout: "abc123def4567890\n"}, true
+	case joined == "git status --porcelain":
+		if content, _ := f.File(calcPath); content == original {
+			return sandbox.Result{}, true
+		}
+		return sandbox.Result{Stdout: " M calc.py\n"}, true
 	case strings.Contains(joined, "git ls-files | head"):
 		return sandbox.Result{Stdout: "calc.py\ntests/test_calc.py\n"}, true
 	case strings.Contains(joined, "git diff --cached --no-color"):
@@ -239,7 +244,10 @@ func TestAPatchThatFailsTheHiddenTestsIsAFailedRun(t *testing.T) {
 func TestSubmittingWithoutChangingAnythingFails(t *testing.T) {
 	h := newHarness(t, Config{MaxConcurrent: 1}, "")
 	h.orch.Start()
-	noop := &model.Script{Steps: []model.ScriptStep{{Calls: []model.ScriptCall{{Tool: "submit", Args: map[string]any{"summary": "looks fine"}}}}}}
+	// The agent claims a fix three times without touching a file. The first two submissions are
+	// turned away; the third stands and the run is judged on its empty diff.
+	claim := model.ScriptStep{Say: "I have fixed it.", Calls: []model.ScriptCall{{Tool: "submit", Args: map[string]any{"summary": "looks fine"}}}}
+	noop := &model.Script{Steps: []model.ScriptStep{claim, claim, claim}}
 
 	summary := h.run(spec(noop))
 

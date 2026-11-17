@@ -12,9 +12,10 @@ import (
 )
 
 const (
-	labelManaged  = "drydock.managed"
-	labelInstance = "drydock.instance"
-	labelPurpose  = "drydock.purpose"
+	labelManaged   = "drydock.managed"
+	labelNamespace = "drydock.namespace"
+	labelInstance  = "drydock.instance"
+	labelPurpose   = "drydock.purpose"
 
 	// The unprivileged user every image provides. Nothing in a sandbox runs as root.
 	sandboxUser = "1000:1000"
@@ -22,15 +23,28 @@ const (
 
 // DockerDriver creates sandboxes as containers on one Docker daemon.
 type DockerDriver struct {
-	engine   *engine.Client
-	instance string
+	engine    *engine.Client
+	namespace string
+	instance  string
 }
 
-// NewDockerDriver returns a driver whose sandboxes are labelled with a fresh
-// instance id, which is how Reap tells this process's sandboxes from orphans.
-func NewDockerDriver(client *engine.Client) *DockerDriver {
-	return &DockerDriver{engine: client, instance: randomID(6)}
+// NewDockerDriver returns a driver for one namespace on the daemon.
+//
+// A namespace is owned by one live orchestrator at a time. Every sandbox is
+// labelled with the namespace and with a fresh instance id; at start-up, Reap
+// removes the sandboxes of earlier instances in the same namespace, which are
+// what a crashed or killed process leaves behind. It never touches another
+// namespace, so two orchestrators, or an orchestrator and a test run, can
+// share a daemon as long as their namespaces differ.
+func NewDockerDriver(client *engine.Client, namespace string) *DockerDriver {
+	if namespace == "" {
+		namespace = "default"
+	}
+	return &DockerDriver{engine: client, namespace: namespace, instance: randomID(6)}
 }
+
+// Namespace returns the namespace this driver owns.
+func (d *DockerDriver) Namespace() string { return d.namespace }
 
 func randomID(n int) string {
 	b := make([]byte, n)
@@ -46,9 +60,10 @@ func (d *DockerDriver) containerSpec(spec Spec) engine.ContainerSpec {
 		limits = DefaultLimits
 	}
 	labels := map[string]string{
-		labelManaged:  "true",
-		labelInstance: d.instance,
-		labelPurpose:  string(spec.Purpose),
+		labelManaged:   "true",
+		labelNamespace: d.namespace,
+		labelInstance:  d.instance,
+		labelPurpose:   string(spec.Purpose),
 	}
 	for key, value := range spec.Labels {
 		labels[key] = value
@@ -122,10 +137,10 @@ func (d *DockerDriver) Create(ctx context.Context, spec Spec) (Sandbox, error) {
 	return &dockerSandbox{engine: d.engine, id: id}, nil
 }
 
-// Reap removes containers that carry the drydock label but belong to another
-// instance: sandboxes whose process crashed or was killed before closing them.
+// Reap removes this namespace's containers that belong to another instance:
+// sandboxes whose process crashed or was killed before closing them.
 func (d *DockerDriver) Reap(ctx context.Context) (int, error) {
-	containers, err := d.engine.ListContainers(ctx, labelManaged+"=true")
+	containers, err := d.engine.ListContainers(ctx, labelNamespace+"="+d.namespace)
 	if err != nil {
 		return 0, err
 	}
@@ -189,6 +204,10 @@ func (s *dockerSandbox) Exec(ctx context.Context, cmd Command) (Result, error) {
 		Duration:  time.Since(started),
 	}
 	if err != nil {
+		if engine.IsNotFound(err) {
+			// The container is gone: removed by hand, by a daemon restart, or by a reaper.
+			return result, fmt.Errorf("%w: %v", ErrGone, err)
+		}
 		return result, err
 	}
 	// timeout(1) exits 124 when it sent TERM and 137 when it had to send KILL.

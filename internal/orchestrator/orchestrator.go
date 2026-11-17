@@ -38,6 +38,9 @@ type Config struct {
 	NewModel func(spec TaskSpec) (model.Backend, error)
 }
 
+// maxSandboxAttempts bounds how often a run replaces a sandbox that turned out to be gone.
+const maxSandboxAttempts = 3
+
 // ErrBusy is returned by Submit when the queue is full.
 var ErrBusy = errors.New("orchestrator: queue is full")
 
@@ -282,25 +285,41 @@ func (o *Orchestrator) execute(r *run) {
 		}
 	}
 
-	provisionStart := time.Now()
-	sb, warm, err := o.pool.Acquire(ctx)
-	if err != nil {
+	// A sandbox that waited in the pool may have been removed from under it. That shows up on first
+	// use, so getting the sandbox and checking the repository out are retried together, a few times.
+	var (
+		sb            sandbox.Sandbox
+		warm          bool
+		checkout      sandbox.Result
+		checkoutStart time.Time
+	)
+	for attempt := 1; ; attempt++ {
+		provisionStart := time.Now()
+		var err error
+		sb, warm, err = o.pool.Acquire(ctx)
+		if err != nil {
+			fail(ReasonHarnessError, err)
+			return
+		}
+		timing.Sandbox = time.Since(provisionStart).Milliseconds()
+		o.emit(r, events.SandboxReady, sandboxReadyEvent{Sandbox: sb.ID(), Warm: warm, Millis: timing.Sandbox, QueueMs: timing.Queue})
+
+		checkoutStart = time.Now()
+		checkout, err = sandbox.Checkout(ctx, sb, mirror, r.spec.Ref)
+		if err == nil && !checkout.OK() {
+			err = fmt.Errorf("checkout failed: %s", strings.TrimSpace(checkout.Combined()))
+		}
+		if err == nil {
+			break
+		}
+		closeSandbox(sb)
+		if errors.Is(err, sandbox.ErrGone) && attempt < maxSandboxAttempts {
+			continue
+		}
 		fail(ReasonHarnessError, err)
 		return
 	}
 	defer closeSandbox(sb)
-	timing.Sandbox = time.Since(provisionStart).Milliseconds()
-	o.emit(r, events.SandboxReady, sandboxReadyEvent{Sandbox: sb.ID(), Warm: warm, Millis: timing.Sandbox, QueueMs: timing.Queue})
-
-	checkoutStart := time.Now()
-	checkout, err := sandbox.Checkout(ctx, sb, mirror, r.spec.Ref)
-	if err == nil && !checkout.OK() {
-		err = fmt.Errorf("checkout failed: %s", strings.TrimSpace(checkout.Combined()))
-	}
-	if err != nil {
-		fail(ReasonHarnessError, err)
-		return
-	}
 	commit := strings.TrimSpace(checkout.Stdout)
 	timing.Checkout = time.Since(checkoutStart).Milliseconds()
 	timing.Startup = timing.Sandbox + timing.Checkout

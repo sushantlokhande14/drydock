@@ -10,6 +10,7 @@ package sandbox
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -102,6 +103,11 @@ type Sandbox interface {
 	Exec(ctx context.Context, cmd Command) (Result, error)
 	Close(ctx context.Context) error
 }
+
+// ErrGone is returned by Exec when the sandbox no longer exists. A sandbox that
+// waited in the pool can be removed from under it, by an operator or a daemon
+// restart; the caller's remedy is to get another one, not to fail the run.
+var ErrGone = errors.New("sandbox: no longer exists")
 
 // Driver creates sandboxes.
 type Driver interface {

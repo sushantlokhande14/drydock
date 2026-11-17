@@ -106,7 +106,7 @@ func benchStartup(ctx context.Context, args []string) error {
 			Image:      image,
 			Cmd:        []string{"sleep", "infinity"},
 			User:       user,
-			Labels:     map[string]string{"drydock.managed": "true", "drydock.instance": "bench"},
+			Labels:     map[string]string{"drydock.managed": "true", "drydock.namespace": sys.driver.Namespace(), "drydock.instance": "bench"},
 			HostConfig: engine.HostConfig{NetworkMode: "bridge", Init: true},
 		})
 		if err != nil {
@@ -398,7 +398,7 @@ func evaluate(ctx context.Context, args []string) error {
 	flags := flag.NewFlagSet("eval", flag.ExitOnError)
 	var opts options
 	opts.register(flags)
-	modelName := flags.String("model", "qwen2.5:7b", "model name at the OpenAI-compatible endpoint")
+	modelName := flags.String("model", "ollama:qwen2.5:7b", `"ollama:<name>" or "openai:<name>"`)
 	repeat := flags.Int("repeat", 1, "attempts per task")
 	out := flags.String("out", "bench/eval.json", "where to write the report")
 	_ = flags.Parse(args)
@@ -413,7 +413,7 @@ func evaluate(ctx context.Context, args []string) error {
 	var names []string
 	for attempt := 0; attempt < *repeat; attempt++ {
 		for _, task := range sys.tasks {
-			summary, err := submitWithRetry(ctx, sys.orch, task.Spec("openai:"+*modelName))
+			summary, err := submitWithRetry(ctx, sys.orch, task.Spec(*modelName))
 			if err != nil {
 				return err
 			}
