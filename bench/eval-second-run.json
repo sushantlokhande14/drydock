@@ -1,0 +1,73 @@
+{
+  "attempts": 8,
+  "measuredAt": "2026-11-17T07:07:38.149365671Z",
+  "model": "ollama:qwen2.5:7b",
+  "resolved": 2,
+  "rows": [
+    {
+      "task": "amounts-parentheses",
+      "state": "failed",
+      "reason": "verification_failed",
+      "steps": 18,
+      "toolCalls": 15,
+      "seconds": 86.986
+    },
+    {
+      "task": "intervals-unsorted-input",
+      "state": "succeeded",
+      "reason": "patch_verified",
+      "steps": 13,
+      "toolCalls": 10,
+      "seconds": 98.211
+    },
+    {
+      "task": "lru-read-recency",
+      "state": "succeeded",
+      "reason": "patch_verified",
+      "steps": 25,
+      "toolCalls": 24,
+      "seconds": 118.695
+    },
+    {
+      "task": "pagination-last-page",
+      "state": "failed",
+      "reason": "model_stopped_calling_tools",
+      "steps": 6,
+      "toolCalls": 49,
+      "seconds": 192.73
+    },
+    {
+      "task": "ratelimit-lost-refill",
+      "state": "failed",
+      "reason": "harness_error",
+      "steps": 25,
+      "toolCalls": 25,
+      "seconds": 488.765,
+      "error": "collecting patch: fatal: bad object HEAD"
+    },
+    {
+      "task": "slug-stray-hyphens",
+      "state": "failed",
+      "reason": "verification_failed",
+      "steps": 24,
+      "toolCalls": 21,
+      "seconds": 165.677
+    },
+    {
+      "task": "unique-ignores-key",
+      "state": "failed",
+      "reason": "verification_failed",
+      "steps": 3,
+      "toolCalls": 7,
+      "seconds": 16.564
+    },
+    {
+      "task": "versions-string-compare",
+      "state": "failed",
+      "reason": "verification_failed",
+      "steps": 12,
+      "toolCalls": 9,
+      "seconds": 92.293
+    }
+  ]
+}

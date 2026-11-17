@@ -1,0 +1,61 @@
+{
+  "agents": 128,
+  "maxConcurrent": 128,
+  "pool": 16,
+  "scriptedThinkTimeMs": 2000,
+  "succeeded": 128,
+  "failed": 0,
+  "reasons": {
+    "patch_verified": 128
+  },
+  "wallSeconds": 50.105712074,
+  "runsPerMinute": 153.2759376547245,
+  "peakActiveRuns": 128,
+  "peakLiveSandboxes": 180,
+  "startupMs": {
+    "all": {
+      "count": 128,
+      "p50": 11292,
+      "p95": 13008,
+      "max": 13235,
+      "mean": 8281.0703125
+    },
+    "warm": {
+      "count": 16,
+      "p50": 292,
+      "p95": 484,
+      "max": 484,
+      "mean": 326.375
+    },
+    "cold": {
+      "count": 112,
+      "p50": 11771,
+      "p95": 13011,
+      "max": 13235,
+      "mean": 9417.455357142857
+    }
+  },
+  "agentMs": {
+    "count": 128,
+    "p50": 17118,
+    "p95": 19735,
+    "max": 21322,
+    "mean": 17179.6171875
+  },
+  "verifyMs": {
+    "count": 128,
+    "p50": 14253,
+    "p95": 17686,
+    "max": 18398,
+    "mean": 13384.515625
+  },
+  "totalMs": {
+    "count": 128,
+    "p50": 40159,
+    "p95": 49585,
+    "max": 50101,
+    "mean": 40984.9140625
+  },
+  "eventsWritten": 4955,
+  "measuredAt": "2026-11-17T07:10:06.430841838Z"
+}

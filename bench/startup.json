@@ -1,0 +1,117 @@
+{
+  "arms": [
+    {
+      "name": "naive",
+      "description": "base image; install git and the test runner; clone over the network",
+      "samplesMs": [
+        15383,
+        13013,
+        13985,
+        13719,
+        13142
+      ],
+      "stats": {
+        "count": 5,
+        "p50": 13719,
+        "p95": 15383,
+        "max": 15383,
+        "mean": 13848.4
+      },
+      "sandboxMeanMs": 228.2,
+      "repoMeanMs": 13620.4
+    },
+    {
+      "name": "prebuilt image",
+      "description": "tools baked into the image; clone over the network",
+      "samplesMs": [
+        1409,
+        1504,
+        1714,
+        1499,
+        1495
+      ],
+      "stats": {
+        "count": 5,
+        "p50": 1499,
+        "p95": 1714,
+        "max": 1714,
+        "mean": 1524.2
+      },
+      "sandboxMeanMs": 188,
+      "repoMeanMs": 1336.6
+    },
+    {
+      "name": "+ repository cache",
+      "description": "hardened sandbox; clone from the local mirror, sharing its objects",
+      "samplesMs": [
+        153,
+        160,
+        158,
+        165,
+        161,
+        159,
+        157,
+        157,
+        157,
+        157,
+        157,
+        159,
+        159,
+        156,
+        183,
+        162,
+        160,
+        157,
+        162,
+        161
+      ],
+      "stats": {
+        "count": 20,
+        "p50": 159,
+        "p95": 165,
+        "max": 183,
+        "mean": 160
+      },
+      "sandboxMeanMs": 109.9,
+      "repoMeanMs": 50.55
+    },
+    {
+      "name": "+ warm pool",
+      "description": "sandbox already started and waiting; clone from the local mirror",
+      "samplesMs": [
+        50,
+        66,
+        61,
+        60,
+        70,
+        68,
+        59,
+        59,
+        60,
+        56,
+        55,
+        55,
+        63,
+        60,
+        65,
+        57,
+        57,
+        64,
+        65,
+        56
+      ],
+      "stats": {
+        "count": 20,
+        "p50": 60,
+        "p95": 68,
+        "max": 70,
+        "mean": 60.3
+      },
+      "sandboxMeanMs": 0,
+      "repoMeanMs": 60.7
+    }
+  ],
+  "image": "drydock-sandbox:python",
+  "measuredAt": "2026-11-17T07:09:13.296117372Z",
+  "repo": "https://github.com/pallets/click"
+}
